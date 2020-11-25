@@ -19,13 +19,12 @@ using symbol_shorthand::P;
 using symbol_shorthand::X;
 
 // Make the typename short so it looks much cleaner
-typedef SmartProjectionPoseFactor<Cal3_S2> SmartFactor;
+typedef SmartProjectionPoseFactor<Cal3_S2> SmartFactor; //Cal3_S2：相机内参
 
 int main(int argc, char* argv[]) {
   Cal3_S2::shared_ptr K(new Cal3_S2(50.0, 50.0, 0.0, 50.0, 50.0));
 
-  auto measurementNoise =
-      noiseModel::Isotropic::Sigma(2, 1.0);  // one pixel in u and v
+  auto measurementNoise = noiseModel::Isotropic::Sigma(2, 1.0);  // one pixel in u and v
 
   Vector6 sigmas;
   sigmas << Vector3::Constant(0.1), Vector3::Constant(0.3);

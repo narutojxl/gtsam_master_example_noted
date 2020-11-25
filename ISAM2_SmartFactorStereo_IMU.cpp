@@ -28,8 +28,7 @@ struct IMUHelper {
   IMUHelper() {
     {
       auto gaussian = noiseModel::Diagonal::Sigmas(
-          (Vector(6) << Vector3::Constant(5.0e-2), Vector3::Constant(5.0e-3))
-              .finished());
+          (Vector(6) << Vector3::Constant(5.0e-2), Vector3::Constant(5.0e-3)).finished());
       auto huber = noiseModel::Robust::Create(
           noiseModel::mEstimator::Huber::Create(1.345), gaussian);
 
@@ -45,21 +44,16 @@ struct IMUHelper {
     }
 
     // expect IMU to be rotated in image space co-ords
-    auto p = boost::make_shared<PreintegratedCombinedMeasurements::Params>(
-        Vector3(0.0, 9.8, 0.0));
+    auto p = boost::make_shared<PreintegratedCombinedMeasurements::Params>(Vector3(0.0, 9.8, 0.0));
 
-    p->accelerometerCovariance =
-        I_3x3 * pow(0.0565, 2.0);  // acc white noise in continuous
-    p->integrationCovariance =
-        I_3x3 * 1e-9;  // integration uncertainty continuous
-    p->gyroscopeCovariance =
-        I_3x3 * pow(4.0e-5, 2.0);  // gyro white noise in continuous
+    p->accelerometerCovariance = I_3x3 * pow(0.0565, 2.0);  // acc white noise in continuous
+    p->integrationCovariance = I_3x3 * 1e-9;  // integration uncertainty continuous
+    p->gyroscopeCovariance = I_3x3 * pow(4.0e-5, 2.0);  // gyro white noise in continuous
     p->biasAccCovariance = I_3x3 * pow(0.00002, 2.0);  // acc bias in continuous
-    p->biasOmegaCovariance =
-        I_3x3 * pow(0.001, 2.0);  // gyro bias in continuous
+    p->biasOmegaCovariance = I_3x3 * pow(0.001, 2.0);  // gyro bias in continuous
     p->biasAccOmegaInt = Matrix::Identity(6, 6) * 1e-5;
 
-    // body to IMU rotation
+    // body(left camera) to IMU rotation
     Rot3 iRb(0.036129, -0.998727, 0.035207,
              0.045417, -0.033553, -0.998404,
              0.998315, 0.037670, 0.044147);
@@ -133,8 +127,7 @@ int main(int argc, char* argv[]) {
   initialEstimate.insert(X(0), Pose3::identity());
 
   // Bias prior
-  graph.addPrior(B(1), imu.priorImuBias,
-                                               imu.biasNoiseModel);
+  graph.addPrior(B(1), imu.priorImuBias, imu.biasNoiseModel);
   initialEstimate.insert(B(0), imu.priorImuBias);
 
   // Velocity prior - assume stationary
@@ -162,8 +155,9 @@ int main(int argc, char* argv[]) {
       initialEstimate.insert(B(lastFrame), imu.prevBias);
 
       CombinedImuFactor imuFactor(X(lastFrame - 1), V(lastFrame - 1),
-                                  X(lastFrame), V(lastFrame), B(lastFrame - 1),
-                                  B(lastFrame), *imu.preintegrated);
+                                  X(lastFrame),     V(lastFrame), 
+                                  B(lastFrame - 1), B(lastFrame), 
+                                  *imu.preintegrated);
 
       graph.add(imuFactor);
 
@@ -217,7 +211,7 @@ int main(int argc, char* argv[]) {
         SmartProjectionParams params(HESSIAN, ZERO_ON_DEGENERACY);
 
         smartFactors[landmark] = SmartStereoProjectionPoseFactor::shared_ptr(
-            new SmartStereoProjectionPoseFactor(gaussian, params));
+                  new SmartStereoProjectionPoseFactor(gaussian, params));
         graph.push_back(smartFactors[landmark]);
       }
 

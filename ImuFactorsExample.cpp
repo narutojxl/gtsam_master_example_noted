@@ -38,12 +38,15 @@
 
 // GTSAM related includes.
 #include <gtsam/inference/Symbol.h>
+
 #include <gtsam/navigation/CombinedImuFactor.h>
 #include <gtsam/navigation/GPSFactor.h>
 #include <gtsam/navigation/ImuFactor.h>
+
 #include <gtsam/nonlinear/ISAM2.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
+
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/dataset.h>
 
@@ -59,6 +62,7 @@ using symbol_shorthand::V;  // Vel   (xdot,ydot,zdot)
 using symbol_shorthand::X;  // Pose3 (x,y,z,r,p,y)
 
 namespace po = boost::program_options;
+
 
 po::variables_map parseOptions(int argc, char* argv[]) {
   po::options_description desc;
@@ -81,6 +85,7 @@ po::variables_map parseOptions(int argc, char* argv[]) {
   return vm;
 }
 
+
 boost::shared_ptr<PreintegratedCombinedMeasurements::Params> imuParams() {
   // We use the sensor specs to build the noise model for the IMU factor.
   double accel_noise_sigma = 0.0003924;
@@ -89,23 +94,21 @@ boost::shared_ptr<PreintegratedCombinedMeasurements::Params> imuParams() {
   double gyro_bias_rw_sigma = 0.000001454441043;
   Matrix33 measured_acc_cov = I_3x3 * pow(accel_noise_sigma, 2);
   Matrix33 measured_omega_cov = I_3x3 * pow(gyro_noise_sigma, 2);
-  Matrix33 integration_error_cov =
-      I_3x3 * 1e-8;  // error committed in integrating position from velocities
+  Matrix33 integration_error_cov = I_3x3 * 1e-8;  // error committed in integrating position from velocities
   Matrix33 bias_acc_cov = I_3x3 * pow(accel_bias_rw_sigma, 2);
   Matrix33 bias_omega_cov = I_3x3 * pow(gyro_bias_rw_sigma, 2);
-  Matrix66 bias_acc_omega_int =
-      I_6x6 * 1e-5;  // error in the bias used for preintegration
+  Matrix66 bias_acc_omega_int = I_6x6 * 1e-5;  // error in the bias used for preintegration
 
-  auto p = PreintegratedCombinedMeasurements::Params::MakeSharedD(0.0);
+  auto p = PreintegratedCombinedMeasurements::Params::MakeSharedD(0.0);//NED imu  //TODO为何不用默认值？
+                                                    //MakeSharedU();  //ENU imu
+
   // PreintegrationBase params:
-  p->accelerometerCovariance =
-      measured_acc_cov;  // acc white noise in continuous
-  p->integrationCovariance =
-      integration_error_cov;  // integration uncertainty continuous
+  p->accelerometerCovariance = measured_acc_cov;  // acc white noise in continuous
+  p->integrationCovariance = integration_error_cov;  // integration uncertainty continuous
+
   // should be using 2nd order integration
   // PreintegratedRotation params:
-  p->gyroscopeCovariance =
-      measured_omega_cov;  // gyro white noise in continuous
+  p->gyroscopeCovariance = measured_omega_cov;  // gyro white noise in continuous
   // PreintegrationCombinedMeasurements params:
   p->biasAccCovariance = bias_acc_cov;      // acc bias in continuous
   p->biasOmegaCovariance = bias_omega_cov;  // gyro bias in continuous
@@ -113,6 +116,7 @@ boost::shared_ptr<PreintegratedCombinedMeasurements::Params> imuParams() {
 
   return p;
 }
+
 
 int main(int argc, char* argv[]) {
   string data_filename, output_filename;
@@ -170,30 +174,37 @@ int main(int argc, char* argv[]) {
   imuBias::ConstantBias prior_imu_bias;  // assume zero initial bias
 
   Values initial_values;
-  int correction_count = 0;
+  int correction_count = 0; //在CombinedImuFactorsExample.cpp中是int index = 0;
   initial_values.insert(X(correction_count), prior_pose);
   initial_values.insert(V(correction_count), prior_velocity);
-  initial_values.insert(B(correction_count), prior_imu_bias);
+  initial_values.insert(B(correction_count), prior_imu_bias); //第一个node
+
 
   // Assemble prior noise model and add it the graph.`
   auto pose_noise_model = noiseModel::Diagonal::Sigmas(
-      (Vector(6) << 0.01, 0.01, 0.01, 0.5, 0.5, 0.5)
-          .finished());  // rad,rad,rad,m, m, m
+      (Vector(6) << 0.01, 0.01, 0.01, 0.5, 0.5, 0.5).finished());  // rad,rad,rad,m, m, m
   auto velocity_noise_model = noiseModel::Isotropic::Sigma(3, 0.1);  // m/s
   auto bias_noise_model = noiseModel::Isotropic::Sigma(6, 1e-3);
 
   // Add all prior factors (pose, velocity, bias) to the graph.
   NonlinearFactorGraph* graph = new NonlinearFactorGraph();
-  graph->addPrior(X(correction_count), prior_pose, pose_noise_model);
-  graph->addPrior(V(correction_count), prior_velocity, velocity_noise_model);
-  graph->addPrior(B(correction_count), prior_imu_bias, bias_noise_model);
+  graph->addPrior<Pose3>(X(correction_count), prior_pose, pose_noise_model);
+  graph->addPrior<Vector3>(V(correction_count), prior_velocity, velocity_noise_model);
+  graph->addPrior<imuBias::ConstantBias>(B(correction_count), prior_imu_bias, bias_noise_model); 
+  //第一个node的prior factor
+  //另一种添加prior factor方式见 IMUKittiExampleGPS.cpp
+
 
   auto p = imuParams();
 
-  std::shared_ptr<PreintegrationType> preintegrated =
+  std::shared_ptr<PreintegrationType> preintegrated = //imu预积分对象
       std::make_shared<PreintegratedImuMeasurements>(p, prior_imu_bias);
+  //在CombinedImuFactorsExample.cpp中是
+  //std::shared_ptr<PreintegrationType> preintegrated =
+  //       std::make_shared<PreintegratedCombinedMeasurements>(p, prior_imu_bias);
 
-  assert(preintegrated);
+  assert(preintegrated); //基类的share ptr指向派生类，判断是否为not nullptr
+
 
   // Store previous state for imu integration and latest predicted outcome.
   NavState prev_state(prior_pose, prior_velocity);
@@ -207,8 +218,9 @@ int main(int argc, char* argv[]) {
   double dt = 0.005;  // The real system has noise, but here, results are nearly
                       // exactly the same, so keeping this for simplicity.
 
+
   // All priors have been set up, now iterate through the data file.
-  while (file.good()) {
+  while (file.good()) { //或者 !file.eof()
     // Parse out first value
     getline(file, value, ',');
     int type = stoi(value.c_str());
@@ -237,30 +249,41 @@ int main(int argc, char* argv[]) {
       correction_count++;
 
       // Adding IMU factor and GPS factor and optimizing.
-      auto preint_imu =
-          dynamic_cast<const PreintegratedImuMeasurements&>(*preintegrated);
+
+      auto preint_imu = dynamic_cast<const PreintegratedImuMeasurements&>(*preintegrated); 
+      //dynamic_cast下行转换
+
       ImuFactor imu_factor(X(correction_count - 1), V(correction_count - 1),
-                           X(correction_count), V(correction_count),
-                           B(correction_count - 1), preint_imu);
+                           X(correction_count),     V(correction_count),
+                           B(correction_count - 1), 
+						               preint_imu);
+	  //CombinedImuFactor imu_factor(X(index - 1), V(index - 1), 
+    //                             X(index),     V(index), 
+    //                             B(index - 1), B(index),
+    //                             preint_imu_combined);
+
       graph->add(imu_factor);
+
       imuBias::ConstantBias zero_bias(Vector3(0, 0, 0), Vector3(0, 0, 0));
-      graph->add(BetweenFactor<imuBias::ConstantBias>(
-          B(correction_count - 1), B(correction_count), zero_bias,
-          bias_noise_model));
+      graph->add(BetweenFactor<imuBias::ConstantBias>( B(correction_count - 1), B(correction_count), zero_bias, bias_noise_model));
+      //imu预积分factor
+      //bias_noise_model更好赋值见 IMUKittiExampleGPS.cpp
 
       auto correction_noise = noiseModel::Isotropic::Sigma(3, 1.0);
       GPSFactor gps_factor(X(correction_count),
-                           Point3(gps(0),   // N,
+                           Point3(gps(0),   // N, txt中已经把gps的测量转换到NED下了
                                   gps(1),   // E,
                                   gps(2)),  // D,
                            correction_noise);
       graph->add(gps_factor);
+      //gps factor
 
       // Now optimize and compare results.
       prop_state = preintegrated->predict(prev_state, prev_bias);
       initial_values.insert(X(correction_count), prop_state.pose());
       initial_values.insert(V(correction_count), prop_state.v());
       initial_values.insert(B(correction_count), prev_bias);
+      //添加node
 
       Values result;
 
@@ -282,9 +305,12 @@ int main(int argc, char* argv[]) {
       prev_state = NavState(result.at<Pose3>(X(correction_count)),
                             result.at<Vector3>(V(correction_count)));
       prev_bias = result.at<imuBias::ConstantBias>(B(correction_count));
-
+      //下一次gps测量值到来时，在该node状态预测
+      
       // Reset the preintegration object.
       preintegrated->resetIntegrationAndSetBias(prev_bias);
+
+
 
       // Print out the position and orientation error for comparison.
       Vector3 gtsam_position = prev_state.pose().translation();

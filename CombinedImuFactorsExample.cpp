@@ -101,23 +101,18 @@ boost::shared_ptr<PreintegratedCombinedMeasurements::Params> imuParams() {
   double gyro_bias_rw_sigma = 0.000001454441043;
   Matrix33 measured_acc_cov = I_3x3 * pow(accel_noise_sigma, 2);
   Matrix33 measured_omega_cov = I_3x3 * pow(gyro_noise_sigma, 2);
-  Matrix33 integration_error_cov =
-      I_3x3 * 1e-8;  // error committed in integrating position from velocities
+  Matrix33 integration_error_cov = I_3x3 * 1e-8;  // error committed in integrating position from velocities
   Matrix33 bias_acc_cov = I_3x3 * pow(accel_bias_rw_sigma, 2);
   Matrix33 bias_omega_cov = I_3x3 * pow(gyro_bias_rw_sigma, 2);
-  Matrix66 bias_acc_omega_int =
-      I_6x6 * 1e-5;  // error in the bias used for preintegration
+  Matrix66 bias_acc_omega_int = I_6x6 * 1e-5;  // error in the bias used for preintegration
 
   auto p = PreintegratedCombinedMeasurements::Params::MakeSharedD(0.0);
   // PreintegrationBase params:
-  p->accelerometerCovariance =
-      measured_acc_cov;  // acc white noise in continuous
-  p->integrationCovariance =
-      integration_error_cov;  // integration uncertainty continuous
+  p->accelerometerCovariance = measured_acc_cov;  // acc white noise in continuous
+  p->integrationCovariance = integration_error_cov;  // integration uncertainty continuous
   // should be using 2nd order integration
   // PreintegratedRotation params:
-  p->gyroscopeCovariance =
-      measured_omega_cov;  // gyro white noise in continuous
+  p->gyroscopeCovariance = measured_omega_cov;  // gyro white noise in continuous
   // PreintegrationCombinedMeasurements params:
   p->biasAccCovariance = bias_acc_cov;      // acc bias in continuous
   p->biasOmegaCovariance = bias_omega_cov;  // gyro bias in continuous
@@ -168,8 +163,7 @@ int main(int argc, char* argv[]) {
 
   // Assemble prior noise model and add it the graph.`
   auto pose_noise_model = noiseModel::Diagonal::Sigmas(
-      (Vector(6) << 0.01, 0.01, 0.01, 0.5, 0.5, 0.5)
-          .finished());  // rad,rad,rad,m, m, m
+      (Vector(6) << 0.01, 0.01, 0.01, 0.5, 0.5, 0.5).finished());  // rad,rad,rad,m, m, m
   auto velocity_noise_model = noiseModel::Isotropic::Sigma(3, 0.1);  // m/s
   auto bias_noise_model = noiseModel::Isotropic::Sigma(6, 1e-3);
 
@@ -177,8 +171,7 @@ int main(int argc, char* argv[]) {
   NonlinearFactorGraph graph;
   graph.addPrior<Pose3>(X(index), prior_pose, pose_noise_model);
   graph.addPrior<Vector3>(V(index), prior_velocity, velocity_noise_model);
-  graph.addPrior<imuBias::ConstantBias>(B(index), prior_imu_bias,
-                                        bias_noise_model);
+  graph.addPrior<imuBias::ConstantBias>(B(index), prior_imu_bias, bias_noise_model);
 
   auto p = imuParams();
 
@@ -230,11 +223,10 @@ int main(int argc, char* argv[]) {
       index++;
 
       // Adding IMU factor and GPS factor and optimizing.
-      auto preint_imu_combined =
-          dynamic_cast<const PreintegratedCombinedMeasurements&>(
-              *preintegrated);
-      CombinedImuFactor imu_factor(X(index - 1), V(index - 1), X(index),
-                                   V(index), B(index - 1), B(index),
+      auto preint_imu_combined = dynamic_cast<const PreintegratedCombinedMeasurements&>(*preintegrated);
+      CombinedImuFactor imu_factor(X(index - 1), V(index - 1), 
+                                   X(index),     V(index), 
+                                   B(index - 1), B(index),
                                    preint_imu_combined);
       graph.add(imu_factor);
 
@@ -252,18 +244,21 @@ int main(int argc, char* argv[]) {
       initial_values.insert(V(index), prop_state.v());
       initial_values.insert(B(index), prev_bias);
 
+
       LevenbergMarquardtParams params;
       params.setVerbosityLM("SUMMARY");
       LevenbergMarquardtOptimizer optimizer(graph, initial_values, params);
       Values result = optimizer.optimize();
 
       // Overwrite the beginning of the preintegration for the next step.
-      prev_state =
-          NavState(result.at<Pose3>(X(index)), result.at<Vector3>(V(index)));
+      prev_state = NavState(result.at<Pose3>(X(index)), 
+                            result.at<Vector3>(V(index)));
       prev_bias = result.at<imuBias::ConstantBias>(B(index));
 
       // Reset the preintegration object.
       preintegrated->resetIntegrationAndSetBias(prev_bias);
+
+
 
       // Print out the position and orientation error for comparison.
       Vector3 result_position = prev_state.pose().translation();

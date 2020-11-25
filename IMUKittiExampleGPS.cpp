@@ -19,12 +19,15 @@
 #include <gtsam/navigation/CombinedImuFactor.h>
 #include <gtsam/navigation/GPSFactor.h>
 #include <gtsam/navigation/ImuFactor.h>
+
 #include <gtsam/slam/dataset.h>
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/PriorFactor.h>
+
 #include <gtsam/nonlinear/ISAM2.h>
 #include <gtsam/nonlinear/ISAM2Params.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
+
 #include <gtsam/inference/Symbol.h>
 
 #include <cstring>
@@ -166,7 +169,7 @@ int main(int argc, char* argv[]) {
     Vector6 BodyP = (Vector6() << kitti_calibration.body_ptx, kitti_calibration.body_pty, kitti_calibration.body_ptz,
                                   kitti_calibration.body_prx, kitti_calibration.body_pry, kitti_calibration.body_prz)
                     .finished();
-    auto body_T_imu = Pose3::Expmap(BodyP);
+    auto body_T_imu = Pose3::Expmap(BodyP); //SE(3)
     if (!body_T_imu.equals(Pose3(), 1e-5)) {
         printf("Currently only support IMUinBody is identity, i.e. IMU and body frame are the same");
         exit(-1);
@@ -187,8 +190,10 @@ int main(int argc, char* argv[]) {
     // Set initial conditions for the estimated trajectory
     // initial pose is the reference frame (navigation frame)
     auto current_pose_global = Pose3(Rot3(), gps_measurements[first_gps_pose].position);
+
     // the vehicle is stationary at the beginning at position 0,0,0
     Vector3 current_velocity_global = Vector3::Zero();
+
     auto current_bias = imuBias::ConstantBias();  // init with zero bias
 
     auto sigma_init_x = noiseModel::Diagonal::Precisions((Vector6() << Vector3::Constant(0),
@@ -205,7 +210,7 @@ int main(int argc, char* argv[]) {
     // error committed in integrating position from velocities
     Matrix33 integration_error_cov = I_3x3 * pow(kitti_calibration.integration_sigma, 2);
 
-    auto imu_params = PreintegratedImuMeasurements::Params::MakeSharedU(g);
+    auto imu_params = PreintegratedImuMeasurements::Params::MakeSharedU(g); //ENU imu
     imu_params->accelerometerCovariance = measured_acc_cov;     // acc white noise in continuous
     imu_params->integrationCovariance = integration_error_cov;  // integration uncertainty continuous
     imu_params->gyroscopeCovariance = measured_omega_cov;       // gyro white noise in continuous
@@ -223,6 +228,7 @@ int main(int argc, char* argv[]) {
     // Create the factor graph and values object that will store new factors and values to add to the incremental graph
     NonlinearFactorGraph new_factors;
     Values new_values;  // values storing the initial estimates of new nodes in the factor graph
+
 
     /// Main loop:
     /// (1) we read the measurements
@@ -245,6 +251,7 @@ int main(int argc, char* argv[]) {
             new_factors.emplace_shared<PriorFactor<Pose3>>(current_pose_key, current_pose_global, sigma_init_x);
             new_factors.emplace_shared<PriorFactor<Vector3>>(current_vel_key, current_velocity_global, sigma_init_v);
             new_factors.emplace_shared<PriorFactor<imuBias::ConstantBias>>(current_bias_key, current_bias, sigma_init_b);
+            //另一种添加prior factor方式
         } else {
             double t_previous = gps_measurements[i-1].time;
 
@@ -267,7 +274,7 @@ int main(int argc, char* argv[]) {
             auto previous_bias_key = B(i-1);
 
             new_factors.emplace_shared<ImuFactor>(previous_pose_key, previous_vel_key,
-                                                  current_pose_key, current_vel_key,
+                                                  current_pose_key,  current_vel_key,
                                                   previous_bias_key, *current_summarized_measurement);
 
             // Bias evolution as given in the IMU metadata
@@ -282,7 +289,7 @@ int main(int argc, char* argv[]) {
 
             // Create GPS factor
             auto gps_pose = Pose3(current_pose_global.rotation(), gps_measurements[i].position);
-            if ((i % gps_skip) == 0) {
+            if ((i % gps_skip) == 0) {//每隔一定数量gps添加一个gps位置测量，和gps factor
                 new_factors.emplace_shared<PriorFactor<Pose3>>(current_pose_key, gps_pose, noise_model_gps);
                 new_values.insert(current_pose_key, gps_pose);
 
@@ -290,7 +297,8 @@ int main(int argc, char* argv[]) {
                 cout << gps_pose.translation();
                 printf("\n\n");
             } else {
-                new_values.insert(current_pose_key, current_pose_global);
+                new_values.insert(current_pose_key, current_pose_global); 
+                //当没有到gps间隔时，添加的node值是gtsam给出的上一个node的值
             }
 
             // Add initial values for velocity and bias based on the previous estimates

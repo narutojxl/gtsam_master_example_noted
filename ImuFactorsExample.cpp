@@ -46,6 +46,7 @@
 #include <gtsam/nonlinear/ISAM2.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
+#include <gtsam/nonlinear/Marginals.h> //jxl: we add 
 
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/dataset.h>
@@ -291,6 +292,11 @@ int main(int argc, char* argv[]) {
         isam2->update(*graph, initial_values);
         isam2->update();
         result = isam2->calculateEstimate();
+        
+        // jxl add 
+        // Marginals marginals(*graph, initial_values);
+        // std::cout << "x1 covariance:\n" << marginals.marginalCovariance(result.size() - 1) << std::endl;
+        // result.size() - 1 应该等于correction_count
 
         // reset the graph
         graph->resize(0);
@@ -298,13 +304,21 @@ int main(int argc, char* argv[]) {
 
       } else {
         LevenbergMarquardtOptimizer optimizer(*graph, initial_values);
-        result = optimizer.optimize();
+        result = optimizer.optimize(); //不用isam2时，用optimize()来计算
+        // DoglegParams params;
+        // params.factorization = DoglegParams::QR;
+        // params.relativeErrorTol = 1e-3;
+        // params.absoluteErrorTol = 1e-3;
+        // DoglegOptimizer optimizer(*graph, initial_values, params);
+        // Values result = optimizer.optimize();
+        // std::cout << "Converged in " << optimizer.iterations() << " iterations "
+        //             "with final error " << optimizer.error() << endl;
       }
 
       // Overwrite the beginning of the preintegration for the next step.
       prev_state = NavState(result.at<Pose3>(X(correction_count)),
                             result.at<Vector3>(V(correction_count)));
-      prev_bias = result.at<imuBias::ConstantBias>(B(correction_count));
+      prev_bias = result.at<imuBias::ConstantBias>(B(correction_count));//node类型
       //下一次gps测量值到来时，在该node状态预测
       
       // Reset the preintegration object.

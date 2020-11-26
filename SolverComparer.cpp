@@ -197,8 +197,7 @@ int main(int argc, char *argv[]) {
     cout << "Loading dataset " << datasetName << endl;
     try {
       string datasetFile = findExampleDataFile(datasetName);
-      std::pair<NonlinearFactorGraph::shared_ptr, Values::shared_ptr> data =
-        load2D(datasetFile);
+      std::pair<NonlinearFactorGraph::shared_ptr, Values::shared_ptr> data = load2D(datasetFile);
       datasetMeasurements = *data.first;
     } catch(std::exception& e) {
       cout << e.what() << endl;
@@ -249,7 +248,7 @@ void runIncremental()
 {
   ISAM2Params params;
   if(dogleg)
-    params.optimizationParams = ISAM2DoglegParams();
+    params.optimizationParams = ISAM2DoglegParams(); //isam2参数设置
   params.relinearizeSkip = relinSkip;
   params.enablePartialRelinearizationCheck = true;
   ISAM2 isam2(params);
@@ -263,14 +262,15 @@ void runIncremental()
   {
     if(BetweenFactor<Pose>::shared_ptr factor =
       boost::dynamic_pointer_cast<BetweenFactor<Pose> >(datasetMeasurements[nextMeasurement]))
+      //取得NonlinearFactorGraph中id的factor， 类型NonlinearFactor::shared_ptr
     {
       Key key1 = factor->key1(), key2 = factor->key2();
-      if(((int)key1 >= firstStep && key1 < key2) || ((int)key2 >= firstStep && key2 < key1)) {
+      if(((int)key1 >= firstStep && key1 < key2) || ((int)key2 >= firstStep && key2 < key1)) {//firstStep k1 k2 (k1, k2在右侧)
         // We found an odometry starting at firstStep
         firstPose = std::min(key1, key2);
         break;
       }
-      if(((int)key2 >= firstStep && key1 < key2) || ((int)key1 >= firstStep && key2 < key1)) {
+      if(((int)key2 >= firstStep && key1 < key2) || ((int)key1 >= firstStep && key2 < key1)) {//k1 firstStep k2 (k1, k2在firstStep左右两侧)
         // We found an odometry joining firstStep with a previous pose
         havePreviousPose = true;
         firstPose = std::max(key1, key2);
@@ -299,22 +299,19 @@ void runIncremental()
 
   cout << "Playing forward time steps..." << endl;
 
+
+
   for (size_t step = firstPose;
-      nextMeasurement < datasetMeasurements.size() && (lastStep == -1 || (int)step <= lastStep);
-      ++step)
-  {
+       nextMeasurement < datasetMeasurements.size() && (lastStep == -1 || (int)step <= lastStep); ++step){
     Values newVariables;
     NonlinearFactorGraph newFactors;
 
     // Collect measurements and new variables for the current step
     gttic_(Collect_measurements);
     while(nextMeasurement < datasetMeasurements.size()) {
-
       NonlinearFactor::shared_ptr measurementf = datasetMeasurements[nextMeasurement];
-
       if(BetweenFactor<Pose>::shared_ptr factor =
-        boost::dynamic_pointer_cast<BetweenFactor<Pose> >(measurementf))
-      {
+            boost::dynamic_pointer_cast<BetweenFactor<Pose> >(measurementf)){//between factor
         // Stop collecting measurements that are for future steps
         if(factor->key1() > step || factor->key2() > step)
           break;
@@ -347,10 +344,8 @@ void runIncremental()
             }
           }
         }
-      }
-      else if(BearingRangeFactor<Pose, Point2>::shared_ptr factor =
-        boost::dynamic_pointer_cast<BearingRangeFactor<Pose, Point2> >(measurementf))
-      {
+      }else if(BearingRangeFactor<Pose, Point2>::shared_ptr factor =
+               boost::dynamic_pointer_cast<BearingRangeFactor<Pose, Point2> >(measurementf)){//range factor
         Key poseKey = factor->keys()[0], lmKey = factor->keys()[1];
 
         // Stop collecting measurements that are for future steps
@@ -374,13 +369,12 @@ void runIncremental()
           newVariables.insert(lmKey,
             pose.transformFrom(measuredBearing.rotate(Point2(measuredRange, 0.0))));
         }
-      }
-      else
-      {
+      }else{
         throw std::runtime_error("Unknown factor type read from data file");
       }
       ++ nextMeasurement;
-    }
+    }//end while
+    
     gttoc_(Collect_measurements);
 
     // Update iSAM2
@@ -412,7 +406,8 @@ void runIncremental()
       cout << "Step " << step << endl;
       tictoc_print_();
     }
-  }
+  }//end for
+
 
   if(!outputFile.empty())
   {
@@ -562,7 +557,7 @@ void runPerturb()
 
   // Perturb values
   VectorValues noise;
-  for(const Values::KeyValuePair& key_val: initial)
+  for(const Values::KeyValuePair& key_val: initial) //gtsam::Values initial;
   {
     Vector noisev(key_val.value.dim());
     for(Vector::Index i = 0; i < noisev.size(); ++i)
